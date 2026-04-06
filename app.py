@@ -5,80 +5,18 @@ import zipfile
 from pathlib import Path
 
 import pandas as pd
-from kaggle.api.kaggle_api_extended import KaggleApi
 
 DB_PATH = "pokemon_battle_arena.db"
 DATASET_SLUG = "abcsds/pokemon"
 DATA_DIR = Path("data")
-CSV_PATH = DATA_DIR / "Pokemon.csv"   # final normalized location
+CSV_PATH = DATA_DIR / "Pokemon.csv"
 
-# ----------------------------
-# Dataset download / discovery
-# ----------------------------
-def ensure_dataset(
-    dataset_slug=DATASET_SLUG,
-    data_dir=DATA_DIR,
-    csv_path=CSV_PATH,
-):
-    """
-    Download the -provided Kaggle dataset only if a CSV does not
-    already exist locally.
-
-    Expected setup:
-      - You already have Kaggle API credentials configured, e.g.
-        ~/.kaggle/kaggle.json
-
-    Behavior:
-      1. If CSV_PATH already exists -> use it
-      2. Else if any CSV exists in data_dir -> reuse it
-      3. Else download from Kaggle and extract
-      4. Return the discovered CSV path
-    """
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    # Case 1: exact expected CSV already exists
-    if csv_path.exists():
-        print(f"Using existing dataset: {csv_path}")
-        return csv_path
-
-    # Case 2: some CSV already exists in the data directory
-    existing_csvs = sorted(data_dir.glob("*.csv"))
-    if existing_csvs:
-        print(f"Using existing dataset: {existing_csvs[0]}")
-        return existing_csvs[0]
-
-    print(f"No local CSV found. Downloading dataset from Kaggle: {dataset_slug}")
-
-    api = KaggleApi()
-    api.authenticate()
-
-    # Download zipped dataset into data_dir
-    api.dataset_download_files(
-        dataset_slug,
-        path=str(data_dir),
-        unzip=True
-    )
-
-    # Find CSV after extraction
-    downloaded_csvs = sorted(data_dir.glob("*.csv"))
-    if not downloaded_csvs:
+def ensure_dataset():
+    if not CSV_PATH.exists():
         raise FileNotFoundError(
-            f"Dataset downloaded from Kaggle, but no CSV file was found in {data_dir}"
+            "Dataset not found. Please include data/Pokemon.csv in the repo."
         )
-
-    # Normalize the chosen CSV name to CSV_PATH for consistency
-    chosen_csv = downloaded_csvs[0]
-    if chosen_csv != csv_path:
-        # copy/rename to expected location
-        df = pd.read_csv(chosen_csv)
-        df.to_csv(csv_path, index=False)
-        print(f"Normalized dataset file to: {csv_path}")
-        return csv_path
-
-    print(f"Dataset downloaded successfully: {chosen_csv}")
-    return chosen_csv
-
-
+    return CSV_PATH
 
 def create_baseline_snapshot(conn):
     conn.execute("DROP TABLE IF EXISTS pokemon_baseline")
