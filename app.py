@@ -3,7 +3,7 @@ import sqlite3
 import random
 import zipfile
 from pathlib import Path
-
+import streamlit as st
 import pandas as pd
 
 DB_PATH = "pokemon_battle_arena.db"
@@ -632,49 +632,108 @@ def best_three_pokemon_team(conn):
         ORDER BY total_stats DESC, speed DESC
         LIMIT 3
     """, conn)
-if __name__ == "__main__":
+
+
+st.set_page_config(page_title="Pokémon Battle Arena", layout="wide")
+st.title("Pokémon Battle Arena")
+
+try:
     conn = setup_database(DB_PATH)
     clear_teams_and_logs(conn)
 
-    print("Sample Pokémon:")
-    print(list_pokemon(conn, 10).to_string(index=False))
+    st.subheader("Sample Pokémon")
+    st.dataframe(list_pokemon(conn, 10), use_container_width=True)
 
-    team1 = search_pokemon(conn, "Charizard")["id"].tolist()[:1] + search_pokemon(conn, "Pikachu")["id"].tolist()[:1]
-    team2 = search_pokemon(conn, "Blastoise")["id"].tolist()[:1] + search_pokemon(conn, "Venusaur")["id"].tolist()[:1]
+    all_pokemon = list_pokemon(conn, 2000)
+    pokemon_names = all_pokemon["name"].tolist()
 
-    if len(team1) < 2 or len(team2) < 2:
-        raise RuntimeError("Example Pokémon not found in dataset. Search names manually and assign teams.")
+    st.subheader("Team Selection")
 
-    assign_team(conn, "Player 1", team1)
-    assign_team(conn, "Player 2", team2)
+    col1, col2 = st.columns(2)
 
-    apply_cheat(conn, "UPUPDOWNDOWN", "Player 1", "Player 2")
-    apply_cheat(conn, "NERF", "Player 1", "Player 2")
+    with col1:
+        st.markdown("### Player 1 Team")
+        p1_team = st.multiselect(
+            "Choose 1 to 3 Pokémon for Player 1",
+            options=pokemon_names,
+            default=["Charizard", "Pikachu"],
+            max_selections=3,
+            key="p1_team"
+        )
+        p1_cheats = st.multiselect(
+            "Player 1 Cheats",
+            options=["UPUPDOWNDOWN", "GODMODE", "STEAL", "LEGENDARY", "NERF"],
+            default=["UPUPDOWNDOWN", "NERF"],
+            key="p1_cheats"
+        )
 
-    winner = battle(conn, "Player 1", "Player 2", verbose=True)
-    print("\nWinner:", winner)
+    with col2:
+        st.markdown("### Player 2 Team")
+        p2_team = st.multiselect(
+            "Choose 1 to 3 Pokémon for Player 2",
+            options=pokemon_names,
+            default=["Blastoise", "Venusaur"],
+            max_selections=3,
+            key="p2_team"
+        )
+        p2_cheats = st.multiselect(
+            "Player 2 Cheats",
+            options=["UPUPDOWNDOWN", "GODMODE", "STEAL", "LEGENDARY", "NERF"],
+            default=[],
+            key="p2_cheats"
+        )
 
-    print("\nBattle log:")
-    print(show_battle_log(conn).to_string(index=False))
+    if st.button("Start Battle"):
+        if not (1 <= len(p1_team) <= 3 and 1 <= len(p2_team) <= 3):
+            st.error("Each player must select between 1 and 3 Pokémon.")
+        else:
+            clear_teams_and_logs(conn)
+            reset_current_hp(conn)
 
-    changes, deleted_rows, audit = cheat_audit_report(conn)
+            p1_ids = [
+                search_pokemon(conn, name)["id"].tolist()[0]
+                for name in p1_team
+            ]
+            p2_ids = [
+                search_pokemon(conn, name)["id"].tolist()[0]
+                for name in p2_team
+            ]
 
-    print("\nCheat audit - modified or inserted Pokémon:")
-    print(changes.to_string(index=False))
+            assign_team(conn, "Player 1", p1_ids)
+            assign_team(conn, "Player 2", p2_ids)
 
-    print("\nCheat audit - deleted Pokémon:")
-    print(deleted_rows.to_string(index=False))
+            for cheat in p1_cheats:
+                apply_cheat(conn, cheat, "Player 1", "Player 2")
 
-    print("\nCheat audit log:")
-    print(audit.to_string(index=False))
+            for cheat in p2_cheats:
+                apply_cheat(conn, cheat, "Player 2", "Player 1")
 
-    print("\nAnalysis - strongest type combos:")
-    print(strongest_type_combos(conn).to_string(index=False))
+            winner = battle(conn, "Player 1", "Player 2", verbose=False)
 
-    print("\nAnalysis - power creep by generation:")
-    print(power_creep_by_generation(conn).to_string(index=False))
+            st.success(f"Winner: {winner}")
 
-    print("\nAnalysis - best raw-stat team:")
-    print(best_three_pokemon_team(conn).to_string(index=False))
+            st.subheader("Battle Log")
+            st.dataframe(show_battle_log(conn), use_container_width=True)
 
-    conn.close()
+            changes, deleted_rows, audit = cheat_audit_report(conn)
+
+            st.subheader("Cheat Audit - Modified or Inserted Pokémon")
+            st.dataframe(changes, use_container_width=True)
+
+            st.subheader("Cheat Audit - Deleted Pokémon")
+            st.dataframe(deleted_rows, use_container_width=True)
+
+            st.subheader("Cheat Audit Log")
+            st.dataframe(audit, use_container_width=True)
+
+            st.subheader("Analysis - Strongest Type Combos")
+            st.dataframe(strongest_type_combos(conn), use_container_width=True)
+
+            st.subheader("Analysis - Power Creep by Generation")
+            st.dataframe(power_creep_by_generation(conn), use_container_width=True)
+
+            st.subheader("Analysis - Best Raw-Stat Team")
+            st.dataframe(best_three_pokemon_team(conn), use_container_width=True)
+
+except Exception as e:
+    st.error(f"App error: {e}")
